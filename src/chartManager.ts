@@ -103,7 +103,7 @@ export const ChartManager = {
 
         const option = {
             tooltip: { formatter: '{b} <br/><em>Click to drill down</em>' }, 
-            animationDurationUpdate: 800, animationEasingUpdate: 'quinticInOut',
+            animationDurationUpdate: 800, animationEasingUpdate: 'quinticInOut' as any,
             series: [{
                 type: 'graph', layout: 'force', 
                 force: { repulsion: 300, edgeLength: 80, gravity: 0.1 }, 

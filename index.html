@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinOps Cloud Efficiency Analyst</title>
+    <!-- Google Fonts for Modern Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- ECharts CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Control Header -->
+        <header class="control-header">
+            <div class="brand">
+                <div class="logo">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19c-1.5 0-2.5-1-2.5-2.5a2.5 2.5 0 0 1 5 0c0 1.5-1 2.5-2.5 2.5z"></path><path d="M6.5 19c-1.5 0-2.5-1-2.5-2.5a2.5 2.5 0 0 1 5 0c0 1.5-1 2.5-2.5 2.5z"></path><path d="M12 11c-1.5 0-2.5-1-2.5-2.5a2.5 2.5 0 0 1 5 0c0 1.5-1 2.5-2.5 2.5z"></path><path d="M12 11v8"></path><path d="M8.5 17l3.5-3.5"></path><path d="M15.5 17l-3.5-3.5"></path></svg>
+                </div>
+                <h1>Cloud Efficiency Analyst</h1>
+            </div>
+            <div class="actions">
+                <label for="file-upload" class="btn btn-primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    Upload New File
+                </label>
+                <input id="file-upload" type="file" accept=".json,.csv" />
+                <button id="btn-reset" class="btn btn-secondary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                    Reset UI
+                </button>
+            </div>
+        </header>
+
+        <main class="dashboard" id="dashboard">
+            <div class="glass-panel main-panel">
+                <div class="panel-header">
+                    <div class="icon-bg">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19c-1.5 0-2.5-1-2.5-2.5a2.5 2.5 0 0 1 5 0c0 1.5-1 2.5-2.5 2.5z"></path><path d="M6.5 19c-1.5 0-2.5-1-2.5-2.5a2.5 2.5 0 0 1 5 0c0 1.5-1 2.5-2.5 2.5z"></path><path d="M12 11c-1.5 0-2.5-1-2.5-2.5a2.5 2.5 0 0 1 5 0c0 1.5-1 2.5-2.5 2.5z"></path><path d="M12 11v8"></path><path d="M8.5 17l3.5-3.5"></path><path d="M15.5 17l-3.5-3.5"></path></svg>
+                    </div>
+                    <h2 id="analysis-title">Efficiency Analysis: Waiting for file...</h2>
+                </div>
+
+                <!-- Gauges Section -->
+                <div class="gauges-container">
+                    <div class="gauge-row primary-gauges">
+                        <div class="gauge-card">
+                            <h3>Potential Monthly Savings (%)</h3>
+                            <div id="gauge-savings" class="gauge-chart"></div>
+                            <div class="gauge-value" id="val-savings">$0/mo</div>
+                        </div>
+                        <div class="gauge-card">
+                            <h3>Average Workload Consumption (%)</h3>
+                            <div id="gauge-consumption" class="gauge-chart"></div>
+                            <div class="gauge-value" id="val-consumption">0%</div>
+                        </div>
+                    </div>
+                    
+                    <div class="gauge-row secondary-gauges">
+                        <div class="gauge-card small">
+                            <h3>CPU Reservation Cluster</h3>
+                            <div id="gauge-cpu-res" class="gauge-chart small-chart"></div>
+                        </div>
+                        <div class="gauge-card small">
+                            <h3>CPU Namespace Cluster</h3>
+                            <div id="gauge-cpu-ns" class="gauge-chart small-chart"></div>
+                        </div>
+                        <div class="gauge-card small">
+                            <h3>Memory Usage Cluster</h3>
+                            <div id="gauge-mem-use" class="gauge-chart small-chart"></div>
+                        </div>
+                        <div class="gauge-card small">
+                            <h3>Memory Usage Cluster Peak</h3>
+                            <div id="gauge-mem-peak" class="gauge-chart small-chart"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- WOW Features Container -->
+                <div class="wow-features-container" id="wow-features" style="display: none; margin-bottom: 2rem;">
+                    <!-- ESG & Time Machine Row -->
+                    <div class="wow-row">
+                        <div class="glass-panel-inner time-machine-panel">
+                            <h3><span class="icon">🕹️</span> Time-Machine Simulator</h3>
+                            <p class="desc">Drag to simulate new CPU limit (m) and project savings.</p>
+                            <div class="slider-container">
+                                <span>100m</span>
+                                <input type="range" id="cpu-slider" min="100" max="4000" value="1000" step="100">
+                                <span>4000m</span>
+                            </div>
+                            <div class="slider-readout">Target: <span id="slider-val" class="badge">1000m</span></div>
+                        </div>
+
+                        <div class="glass-panel-inner esg-panel">
+                            <h3><span class="icon">🌍</span> ESG & Carbon Footprint</h3>
+                            <p class="desc">Environmental impact of reclaimed resources.</p>
+                            <div class="esg-stats">
+                                <div class="esg-stat">
+                                    <span class="esg-value highlight-green" id="co2-val">0</span>
+                                    <span class="esg-label">lbs CO2/mo Saved</span>
+                                </div>
+                                <div class="esg-stat">
+                                    <span class="esg-value highlight-green" id="tree-val">0</span>
+                                    <span class="esg-label">Equivalent Trees</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Zombie Scanner -->
+                    <div class="glass-panel-inner zombie-panel mt-1">
+                        <h3><span class="icon">🧟‍♂️</span> Zombie Workload Scanner</h3>
+                        <p class="desc">Auto-detected idle workloads (&lt; 2% utilization).</p>
+                        <div class="table-responsive">
+                            <table class="zombie-table" id="zombie-table">
+                                <thead><tr><th>Namespace</th><th>Workload</th><th>Avg CPU</th><th>Network Rx/Tx</th><th>Est. Waste</th></tr></thead>
+                                <tbody>
+                                    <!-- Dynamic -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Blast Radius -->
+                    <div class="glass-panel-inner blast-panel mt-1">
+                        <h3><span class="icon">🕸️</span> Blast Radius Topography</h3>
+                        <p class="desc">Visualizing isolation boundaries. <span class="highlight-green">Green</span> indicates optimization target.</p>
+                        <div id="blast-graph" class="blast-graph-container"></div>
+                    </div>
+                </div>
+
+                <!-- Expert Analysis Section -->
+                <div class="insight-section glass-panel-inner" id="insight-section" style="display: none;">
+                    <h3>FinOps & DevOps Expert Analysis</h3>
+                    <ul class="insight-list">
+                        <li>
+                            <strong class="highlight-blue">Recommendation:</strong> Reduce CPU limit from 
+                            <span class="badge" id="cpu-old-limit">4000m</span> to <span class="badge badge-green" id="cpu-new-limit">1000m</span> 
+                            for the <strong id="workload-name">'payment-gateway-prod'</strong> workload in namespace 
+                            <strong id="namespace-name">'finance-ops'</strong>.
+                        </li>
+                        <li>
+                            <strong class="highlight-blue">The Core Story:</strong> The telemetry indicates significant resource stranding. 
+                            The container has been allocated a high CPU limit but consistently utilizes only a small fraction. 
+                            This over-provisioning congests the highly constrained k3s nodes without delivering any performance benefit to the workload.
+                        </li>
+                        <li>
+                            <strong class="highlight-blue">Risk Mitigation:</strong> This optimization is perfectly safe and data-driven. 
+                            Continuous peak usage analysis demonstrates that the container's peaks never exceed the newly proposed limit, 
+                            providing ample overhead. Throttling or latency degradation will not occur.
+                        </li>
+                        <li>
+                            <strong class="highlight-red">CRITICAL CONTAINER ISOLATION BOUNDARY:</strong> This optimization modifies ONLY the container infrastructure manifest specifications (<code>requests</code> and <code>limits</code>). It <strong>DOES NOT modify, touch, or alter a single line of application source code inside the containers.</strong>
+                        </li>
+                        <li>
+                            <strong class="highlight-blue">Implementation:</strong> Use the provided snippets to safely apply the changes via Infrastructure as Code or Kubernetes Manifests.
+                        </li>
+                    </ul>
+
+                    <div class="gitops-action-container" style="margin-bottom: 1rem;">
+                        <button id="btn-gitops" class="btn btn-primary" style="background: linear-gradient(135deg, #10b981, #059669);">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"></path><path d="M9 18c-4.51 2-5-2-7-2"></path></svg>
+                            1-Click PR (Download Git Patch)
+                        </button>
+                    </div>
+
+                    <div class="code-blocks-container">
+                        <div class="code-block-wrapper">
+                            <div class="code-header">
+                                <span>Terraform (HCL)</span>
+                            </div>
+                            <pre><code class="language-hcl" id="code-terraform"># Awaiting data...</code></pre>
+                        </div>
+                        
+                        <div class="code-block-wrapper">
+                            <div class="code-header">
+                                <span>Kubernetes YAML</span>
+                            </div>
+                            <pre><code class="language-yaml" id="code-yaml"># Awaiting data...</code></pre>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Conversational Q&A Section -->
+                <div class="qa-section glass-panel-inner" id="qa-section" style="display: none; margin-top: 2rem;">
+                    <h3>FinOps AI Assistant Q&A</h3>
+                    <div class="qa-container">
+                        <div class="preset-queries">
+                            <button class="btn btn-secondary query-btn" data-query="1">Why did I receive this FinOps alert/issue?</button>
+                            <button class="btn btn-secondary query-btn" data-query="2">How much money will I save if I implement this?</button>
+                            <button class="btn btn-secondary query-btn" data-query="3">Can you provide a solution and explain runtime impact?</button>
+                        </div>
+                        <div class="chat-window" id="chat-window">
+                            <div class="chat-message system">Select a query above to interact with the data-driven FinOps Assistant.</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="empty-state" class="empty-state">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="empty-icon"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+                    <p>Upload a Turbonomic CSV or Cloudability JSON file to generate insights.</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

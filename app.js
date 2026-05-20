@@ -150,69 +150,69 @@ const ChartManager = {
 // --- HTML TEMPLATES ---
 const Templates = {
     getTerraformHCL(data) {
-        return \`resource "kubernetes_deployment" "k3s_optimized_workload" {
+        return `resource "kubernetes_deployment" "k3s_optimized_workload" {
   metadata {
-    name      = "\${data.workload}"
-    namespace = "\${data.namespace}"
+    name      = "${data.workload}"
+    namespace = "${data.namespace}"
   }
 
   spec {
     template {
       spec {
         container {
-          name = "\${data.workload}-container"
+          name = "${data.workload}-container"
           resources {
-<span class="diff-del">-           limits   = { cpu = "\${data.oldLimit}" }</span>
-<span class="diff-add">+           limits   = { cpu = "\${data.newLimit}" }</span>
+<span class="diff-del">-           limits   = { cpu = "${data.oldLimit}" }</span>
+<span class="diff-add">+           limits   = { cpu = "${data.newLimit}" }</span>
           }
         }
       }
     }
   }
-}\`;
+}`;
     },
 
     getYamlManifest(data) {
-        return \`apiVersion: apps/v1
+        return `apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: \${data.workload}
-  namespace: \${data.namespace}
+  name: ${data.workload}
+  namespace: ${data.namespace}
 spec:
   template:
     spec:
       containers:
-      - name: \${data.workload}-container
+      - name: ${data.workload}-container
         resources:
           limits:
-<span class="diff-del">-           cpu: "\${data.oldLimit}"</span>
-<span class="diff-add">+           cpu: "\${data.newLimit}"</span>\`;
+<span class="diff-del">-           cpu: "${data.oldLimit}"</span>
+<span class="diff-add">+           cpu: "${data.newLimit}"</span>`;
     },
 
     getZombieTableRows(zombies) {
         return zombies.map(z => 
-            \`<tr>
-                <td><code>\${z.ns}</code></td>
-                <td><code>\${z.wl}</code></td>
-                <td style="color: \${CONFIG.colors.red};">\${z.cpu}</td>
-                <td>\${z.net}</td>
-                <td>\${z.waste}</td>
-            </tr>\`
+            `<tr>
+                <td><code>${z.ns}</code></td>
+                <td><code>${z.wl}</code></td>
+                <td style="color: ${CONFIG.colors.red};">${z.cpu}</td>
+                <td>${z.net}</td>
+                <td>${z.waste}</td>
+            </tr>`
         ).join('');
     },
 
     getGitPatch(yamlContent, data) {
-        return \`From: FinOps AI Assistant
-Date: \${new Date().toUTCString()}
-Subject: [FinOps] Optimize k3s limits for \${data.workload}
+        return `From: FinOps AI Assistant
+Date: ${new Date().toUTCString()}
+Subject: [FinOps] Optimize k3s limits for ${data.workload}
 
 This patch safely reduces CPU limits to eliminate waste based on telemetry data.
 Application runtime remains 100% stable.
 
---- a/manifests/\${data.namespace}/\${data.workload}.yaml
-+++ b/manifests/\${data.namespace}/\${data.workload}.yaml
+--- a/manifests/${data.namespace}/${data.workload}.yaml
++++ b/manifests/${data.namespace}/${data.workload}.yaml
 
-\${yamlContent}\`;
+${yamlContent}`;
     }
 };
 
@@ -273,7 +273,7 @@ const UIManager = {
         if (systemMsg) systemMsg.remove();
 
         const msg = document.createElement('div');
-        msg.className = \`chat-message \${type}\`;
+        msg.className = `chat-message ${type}`;
         msg.innerHTML = html;
         chatWindow.appendChild(msg);
         chatWindow.scrollTop = chatWindow.scrollHeight;
@@ -288,7 +288,7 @@ const UIManager = {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = \`optimize-\${State.data.workload}.patch\`;
+        a.download = `optimize-${State.data.workload}.patch`;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
@@ -367,18 +367,18 @@ const AppController = {
     updateUI(data, filename) {
         State.data = data;
         UIManager.showSections(true);
-        UIManager.safeSetText('analysis-title', \`Efficiency Analysis: \${filename}\`);
+        UIManager.safeSetText('analysis-title', `Efficiency Analysis: ${filename}`);
 
         const { newVal, oldLimitInt } = UIManager.updateSlider(data.oldLimit, data.newLimit);
 
         ChartManager.updateGauges(data);
 
-        UIManager.safeSetHTML('val-savings', \`~\${data.savingsPct || 0}% <br><span style="font-size: 1rem; color: #94a3b8;">$\${data.savingsAbs || 0}/mo</span>\`);
-        UIManager.safeSetText('val-consumption', \`~\${data.consumptionPct || 0}%\`);
+        UIManager.safeSetHTML('val-savings', `~${data.savingsPct || 0}% <br><span style="font-size: 1rem; color: #94a3b8;">$${data.savingsAbs || 0}/mo</span>`);
+        UIManager.safeSetText('val-consumption', `~${data.consumptionPct || 0}%`);
         UIManager.safeSetText('cpu-old-limit', data.oldLimit || 'N/A');
         UIManager.safeSetText('cpu-new-limit', data.newLimit || 'N/A');
-        UIManager.safeSetText('workload-name', \`'\${data.workload || 'unknown'}'\`);
-        UIManager.safeSetText('namespace-name', \`'\${data.namespace || 'unknown'}'\`);
+        UIManager.safeSetText('workload-name', `'${data.workload || 'unknown'}'`);
+        UIManager.safeSetText('namespace-name', `'${data.namespace || 'unknown'}'`);
 
         this.generateCodeSnippets(data);
         this.generateESGMetrics(newVal, oldLimitInt);
@@ -395,7 +395,7 @@ const AppController = {
         const { newSavingsPct, newSavingsAbs, savedM } = FinOpsCalculator.calculateSliderSavings(newVal);
         
         ChartManager.instances.gaugeSavings?.setOption({ series: [{ data: [{ value: newSavingsPct }] }] });
-        UIManager.safeSetHTML('val-savings', \`~\${newSavingsPct}% <br><span style="font-size: 1rem; color: #94a3b8;">$\${newSavingsAbs}/mo</span>\`);
+        UIManager.safeSetHTML('val-savings', `~${newSavingsPct}% <br><span style="font-size: 1rem; color: #94a3b8;">$${newSavingsAbs}/mo</span>`);
         
         const tempData = { ...State.data, newLimit: newVal + 'm' };
         this.generateCodeSnippets(tempData);
@@ -424,14 +424,14 @@ const AppController = {
         
         let html = '';
         if (queryId === '1') {
-            html = \`<strong>Data-Driven Analysis:</strong> The telemetry indicates an "Efficiency" opportunity for the <code>\${State.data.workload}</code> workload in the <code>\${State.data.namespace}</code> domain. The container has been allocated a high CPU limit (\${State.data.oldLimit}) but consistently utilizes only a small fraction (~\${State.data.consumptionPct}%). This underutilized resource reservation causes congestion on highly constrained k3s nodes without delivering business value.\`;
+            html = `<strong>Data-Driven Analysis:</strong> The telemetry indicates an "Efficiency" opportunity for the <code>${State.data.workload}</code> workload in the <code>${State.data.namespace}</code> domain. The container has been allocated a high CPU limit (${State.data.oldLimit}) but consistently utilizes only a small fraction (~${State.data.consumptionPct}%). This underutilized resource reservation causes congestion on highly constrained k3s nodes without delivering business value.`;
         } else if (queryId === '2') {
-            html = \`<strong>Cost Impact:</strong> By implementing this optimization, you will achieve an exact cost reduction of <strong>$\${State.data.savingsAbs}/month</strong>. Your overall efficiency will increase by ~\${State.data.savingsPct}%. Since this action is an efficiency scale-down of wasted resources, it directly reduces your target optimized spend without risking application downtime.\`;
+            html = `<strong>Cost Impact:</strong> By implementing this optimization, you will achieve an exact cost reduction of <strong>$${State.data.savingsAbs}/month</strong>. Your overall efficiency will increase by ~${State.data.savingsPct}%. Since this action is an efficiency scale-down of wasted resources, it directly reduces your target optimized spend without risking application downtime.`;
         } else if (queryId === '3') {
-            html = \`<strong>Solution & Runtime Impact:</strong> You should scale down the CPU limit from \${State.data.oldLimit} to \${State.data.newLimit}.<br><br>
-            <strong class="highlight-red">CRITICAL CONTAINER ISOLATION BOUNDARY:</strong> This optimization ONLY modifies the infrastructure manifest layer (requests and limits). It <strong>NEVER touches or alters a single line of application source code inside the container.</strong> Because a safe overhead buffer is left (peak usage is only \${State.data.memUsePeak}%), application execution will remain 100% stable.<br><br>
+            html = `<strong>Solution & Runtime Impact:</strong> You should scale down the CPU limit from ${State.data.oldLimit} to ${State.data.newLimit}.<br><br>
+            <strong class="highlight-red">CRITICAL CONTAINER ISOLATION BOUNDARY:</strong> This optimization ONLY modifies the infrastructure manifest layer (requests and limits). It <strong>NEVER touches or alters a single line of application source code inside the container.</strong> Because a safe overhead buffer is left (peak usage is only ${State.data.memUsePeak}%), application execution will remain 100% stable.<br><br>
             <strong>Terraform Snippet:</strong>
-            <pre><code class="language-hcl">\${document.getElementById('code-terraform')?.innerText || ''}</code></pre>\`;
+            <pre><code class="language-hcl">${document.getElementById('code-terraform')?.innerText || ''}</code></pre>`;
         }
         
         UIManager.appendChatMsg('bot', html);
@@ -445,7 +445,7 @@ const AppController = {
         if(fileInput) fileInput.value = '';
         
         UIManager.showSections(false);
-        UIManager.safeSetText('analysis-title', \`Efficiency Analysis: Waiting for file...\`);
+        UIManager.safeSetText('analysis-title', `Efficiency Analysis: Waiting for file...`);
         UIManager.resetChat();
 
         ChartManager.updateGauges({}); // Pass empty data for zeros

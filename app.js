@@ -476,6 +476,20 @@ const AppController = {
             <strong class="highlight-red">CRITICAL CONTAINER ISOLATION BOUNDARY:</strong> This optimization ONLY modifies the infrastructure manifest layer (requests and limits). It <strong>NEVER touches or alters a single line of application source code inside the container.</strong> Because a safe overhead buffer is left (peak usage is only ${State.data.memUsePeak}%), application execution will remain 100% stable.<br><br>
             <strong>Terraform Snippet:</strong>
             <pre><code class="language-hcl">${document.getElementById('code-terraform')?.innerText || ''}</code></pre>`;
+        } else if (queryId === '4') {
+            const esgVal = document.getElementById('co2-val')?.innerText || '0';
+            const treeVal = document.getElementById('tree-val')?.innerText || '0';
+            html = `<strong>ESG & Sustainability:</strong> By reclaiming wasted CPU cycles, you are preventing <strong>${esgVal} lbs of CO2 emissions</strong> per month. This is the equivalent of planting <strong>${treeVal} trees</strong>, contributing directly to corporate sustainability goals while reducing infrastructure spend.`;
+        } else if (queryId === '5') {
+            html = `<strong>Zombie Workloads:</strong> Yes! The <span class="highlight-blue">Zombie Workload Scanner</span> detected idle workloads utilizing &lt; 2% CPU and generating almost zero network traffic (e.g., <code>spark-worker-idle</code>). Deleting these zombies entirely instead of just resizing them would safely reclaim additional monthly budget.`;
+        } else if (queryId === '6') {
+            html = `<strong>Risk Mitigation:</strong> Your workload's historical peak memory usage only reached <strong>${State.data.memUsePeak}%</strong>. The new proposed limit of <code>${State.data.newLimit}</code> provides a generous overhead buffer above your all-time peak. Even under high traffic, the k3s scheduler will ensure your pods are not CPU-throttled.`;
+        } else if (queryId === '7') {
+            const oldL = FinOpsCalculator.parseMillicores(State.data.oldLimit);
+            const delta = Math.max(0, oldL - FinOpsCalculator.parseMillicores(State.data.newLimit));
+            html = `<strong>Transparent Methodology:</strong> The savings are calculated by measuring the delta between your reserved capacity (<code>${State.data.oldLimit}</code>) and your actual consumption (~${State.data.consumptionPct}%). By removing the <code>${delta}m</code> of 'stranded capacity' from your cloud bill at standard compute rates, we realize a direct savings of <strong>$${State.data.savingsAbs}/month</strong>.`;
+        } else if (queryId === '8') {
+            html = `<strong>GitOps Automation:</strong> You don't have to make these changes manually! I have pre-generated a safe Infrastructure-as-Code Git Patch. Click the <span style="color: #10b981; font-weight: bold;">1-Click PR</span> button to download the <code>.patch</code> file, and apply it directly to your CI/CD pipeline.`;
         }
         
         UIManager.appendChatMsg('bot', html);

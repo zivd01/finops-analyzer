@@ -1,532 +1,458 @@
-// Initialize ECharts instances
-const chartTheme = 'dark';
-let gaugeSavings, gaugeConsumption, gaugeCpuRes, gaugeCpuNs, gaugeMemUse, gaugeMemPeak, blastChart;
-let currentData = null; // Store parsed data globally
-let currentUploadSession = 0; // Prevent race conditions with FileReader
+// --- CONFIGURATION & CONSTANTS ---
+const CONFIG = {
+    theme: 'dark',
+    fallbackMaxCpu: 4000,
+    baseSavingsAbs: 450,
+    esg: {
+        lbsCo2PerMillicore: 0.05,
+        treesPerLbsCo2: 0.02
+    },
+    colors: {
+        red: '#ef4444',
+        orange: '#f59e0b',
+        green: '#10b981',
+        bluePrimary: '#3b82f6',
+        blueSecondary: '#60a5fa'
+    }
+};
 
-document.addEventListener("DOMContentLoaded", () => {
-    initCharts();
-    setupEventListeners();
-});
+// --- GLOBAL STATE ---
+const State = {
+    data: null,
+    uploadSession: 0
+};
 
-function initCharts() {
-    // Shared ECharts Gauge options
-    const commonGaugeOpts = {
-        series: [{
-            type: 'gauge',
-            startAngle: 180,
-            endAngle: 0,
-            radius: '100%',
-            center: ['50%', '70%'],
-            pointer: {
-                icon: 'path://M12.8,0.7l12,40.1H0.7L12.8,0.7z',
-                length: '60%',
-                width: 8,
-                offsetCenter: [0, '-10%'],
-                itemStyle: { color: 'auto' }
-            },
-            axisLine: {
-                lineStyle: { width: 15 }
-            },
-            axisTick: { show: false },
-            splitLine: { show: false },
-            axisLabel: { show: false },
-            detail: { show: false } // Hidden here, shown in HTML
-        }]
-    };
-
-    // Potential Monthly Savings Gauge (Green/Orange/Red)
-    gaugeSavings = echarts.init(document.getElementById('gauge-savings'));
-    gaugeSavings.setOption({
-        ...commonGaugeOpts,
-        series: [{
-            ...commonGaugeOpts.series[0],
-            axisLine: {
-                lineStyle: {
-                    width: 20,
-                    color: [
-                        [0.3, '#ef4444'], // 0-30% Red
-                        [0.7, '#f59e0b'], // 30-70% Orange
-                        [1, '#10b981']    // 70-100% Green
-                    ]
-                }
-            },
-            data: [{ value: 0 }]
-        }]
-    });
-
-    // Average Workload Consumption Gauge (Blue)
-    gaugeConsumption = echarts.init(document.getElementById('gauge-consumption'));
-    gaugeConsumption.setOption({
-        ...commonGaugeOpts,
-        series: [{
-            ...commonGaugeOpts.series[0],
-            axisLine: {
-                lineStyle: {
-                    width: 20,
-                    color: [
-                        [0.2, '#3b82f6'], // Low utilization
-                        [0.8, '#60a5fa'], // Med
-                        [1, '#ef4444']    // High
-                    ]
-                }
-            },
-            data: [{ value: 0 }]
-        }]
-    });
-
-    // Small Gauges
-    const smallOpts = {
-        series: [{
-            type: 'gauge',
-            startAngle: 210,
-            endAngle: -30,
-            radius: '100%',
-            center: ['50%', '55%'],
-            pointer: { length: '50%', width: 4 },
-            axisLine: { lineStyle: { width: 10 } },
-            axisTick: { show: false },
-            splitLine: { show: false },
-            axisLabel: { show: false },
-            detail: {
-                formatter: '{value}%',
-                fontSize: 16,
-                color: '#fff',
-                offsetCenter: [0, '40%']
-            }
-        }]
-    };
-
-    const smallColorPrimary = [[1, '#10b981']];
-    const smallColorSecondary = [[1, '#3b82f6']];
-
-    gaugeCpuRes = echarts.init(document.getElementById('gauge-cpu-res'));
-    gaugeCpuRes.setOption({ ...smallOpts, series: [{ ...smallOpts.series[0], axisLine: { lineStyle: { width: 10, color: smallColorPrimary } }, data: [{ value: 0 }] }] });
-
-    gaugeCpuNs = echarts.init(document.getElementById('gauge-cpu-ns'));
-    gaugeCpuNs.setOption({ ...smallOpts, series: [{ ...smallOpts.series[0], axisLine: { lineStyle: { width: 10, color: smallColorPrimary } }, data: [{ value: 0 }] }] });
-
-    gaugeMemUse = echarts.init(document.getElementById('gauge-mem-use'));
-    gaugeMemUse.setOption({ ...smallOpts, series: [{ ...smallOpts.series[0], axisLine: { lineStyle: { width: 10, color: smallColorSecondary } }, data: [{ value: 0 }] }] });
-
-    gaugeMemPeak = echarts.init(document.getElementById('gauge-mem-peak'));
-    gaugeMemPeak.setOption({ ...smallOpts, series: [{ ...smallOpts.series[0], axisLine: { lineStyle: { width: 10, color: smallColorSecondary } }, data: [{ value: 0 }] }] });
-
-    blastChart = echarts.init(document.getElementById('blast-graph'));
-
-    // Handle Window Resize
-    window.addEventListener('resize', () => {
-        gaugeSavings.resize();
-        gaugeConsumption.resize();
-        gaugeCpuRes.resize();
-        gaugeCpuNs.resize();
-        gaugeMemUse.resize();
-        gaugeMemPeak.resize();
-        blastChart.resize();
-    });
-}
-
-function setupEventListeners() {
-    const fileInput = document.getElementById('file-upload');
-    const resetBtn = document.getElementById('btn-reset');
-
-    fileInput.addEventListener('change', handleFileUpload);
-    resetBtn.addEventListener('click', resetUI);
-
-    document.querySelectorAll('.query-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            handleQueryClick(e.target.dataset.query, e.target.innerText);
-        });
-    });
-
-    const cpuSlider = document.getElementById('cpu-slider');
-    if(cpuSlider) cpuSlider.addEventListener('input', handleSliderChange);
-
-    const btnGitops = document.getElementById('btn-gitops');
-    if(btnGitops) btnGitops.addEventListener('click', downloadGitOpsPatch);
-}
-
-function handleFileUpload(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    // Increment session to invalidate any currently running async reads
-    const sessionId = ++currentUploadSession;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        // Race condition prevention: if user reset or uploaded a new file while reading
-        if (sessionId !== currentUploadSession) return;
-
-        const content = e.target.result;
-        if (!content || !content.trim()) {
-            alert("The uploaded file is empty.");
-            return;
+// --- DATA PARSERS & CALCULATORS ---
+const FinOpsCalculator = {
+    parseMillicores(val) {
+        if (val == null) return 0;
+        if (typeof val === 'number') return val < 100 ? val * 1000 : val; 
+        const strVal = String(val).trim();
+        if (strVal.endsWith('m')) {
+            return parseInt(strVal.replace('m', ''), 10) || 0;
         }
+        const parsed = parseFloat(strVal) || 0;
+        return parsed < 100 ? parsed * 1000 : parsed;
+    },
 
-        let data;
-        try {
-            if (file.name.endsWith('.json') || content.trim().startsWith('{') || content.trim().startsWith('[')) {
-                data = JSON.parse(content);
-                processFinOpsData(data, file.name);
-            } else if (file.name.endsWith('.csv')) {
-                processFinOpsData({ _type: 'csv', raw: content }, file.name);
-            } else {
-                alert("Unsupported file format. Please upload JSON or CSV.");
-            }
-        } catch (error) {
-            console.error("Error parsing file:", error);
-            alert("Failed to parse file. Ensuring it's valid JSON or CSV.");
-        }
-    };
-    reader.readAsText(file);
-}
-
-function processFinOpsData(data, filename) {
-    // Simulate extracting values based on file.
-    // In a real scenario, this would map specific Turbonomic/Cloudability keys.
-    // For this demonstration, we use the values seen in the user's reference image
-    // if the filename contains "test_alert", otherwise we use a mock calculation.
-    
-    let simulatedData = {
-        savingsPct: 35,
-        savingsAbs: 450,
-        consumptionPct: 12,
-        cpuResCluster: 10,
-        cpuNsCluster: 0,
-        memUseCluster: 0,
-        memUsePeak: 28,
+    calculateSliderSavings(newVal) {
+        const oldLimitInt = this.parseMillicores(State.data.oldLimit);
+        const safeOldLimit = oldLimitInt > 0 ? oldLimitInt : 1; 
         
-        workload: 'payment-gateway-prod',
-        namespace: 'finance-ops',
-        oldLimit: '4000m',
-        newLimit: '1000m'
-    };
+        const savedM = Math.max(0, oldLimitInt - newVal);
+        const savingsRatio = savedM / safeOldLimit;
+        
+        const newSavingsPct = Math.max(0, Math.round(savingsRatio * 100) || 0);
+        
+        const baseSavings = State.data.savingsAbs || CONFIG.baseSavingsAbs;
+        const currentNewLimitInt = this.parseMillicores(State.data.newLimit);
+        const baseSavingsRatio = (oldLimitInt - currentNewLimitInt) / safeOldLimit || 1;
+        
+        const newSavingsAbs = Math.max(0, Math.round((savingsRatio / baseSavingsRatio) * baseSavings) || 0);
 
-    // If it's a completely different file, just mock some random values to show dynamic capability
-    if (!filename.includes('turbonomic') && !filename.includes('test_alert')) {
-        simulatedData.savingsPct = Math.floor(Math.random() * 80) + 10;
-        simulatedData.savingsAbs = Math.floor(Math.random() * 2000) + 100;
-        simulatedData.consumptionPct = Math.floor(Math.random() * 60) + 5;
-        simulatedData.cpuResCluster = Math.floor(Math.random() * 40);
-        simulatedData.memUsePeak = Math.floor(Math.random() * 50) + 10;
+        return { newSavingsPct, newSavingsAbs, savedM };
+    },
+
+    calculateESG(savedM) {
+        const totalCo2 = (savedM * CONFIG.esg.lbsCo2PerMillicore).toFixed(1);
+        const totalTrees = Math.round(totalCo2 * CONFIG.esg.treesPerLbsCo2) || 0;
+        return { totalCo2: isNaN(totalCo2) ? "0.0" : totalCo2, totalTrees };
     }
+};
 
-    updateUI(simulatedData, filename);
-}
+// --- CHART MANAGER ---
+const ChartManager = {
+    instances: {},
 
-// Safe DOM manipulators
-function safeSetText(id, text) {
-    const el = document.getElementById(id);
-    if (el) el.innerText = text;
-}
+    init() {
+        this.instances.gaugeSavings = echarts.init(document.getElementById('gauge-savings'));
+        this.instances.gaugeSavings.setOption(this.getLargeGaugeOpts([
+            [0.3, CONFIG.colors.red], [0.7, CONFIG.colors.orange], [1, CONFIG.colors.green]
+        ]));
 
-function safeSetHTML(id, html) {
-    const el = document.getElementById(id);
-    if (el) el.innerHTML = html;
-}
+        this.instances.gaugeConsumption = echarts.init(document.getElementById('gauge-consumption'));
+        this.instances.gaugeConsumption.setOption(this.getLargeGaugeOpts([
+            [0.2, CONFIG.colors.bluePrimary], [0.8, CONFIG.colors.blueSecondary], [1, CONFIG.colors.red]
+        ]));
 
-function parseMillicores(val) {
-    if (val == null) return 0;
-    if (typeof val === 'number') return val < 100 ? val * 1000 : val; // Assume small numbers are cores
-    const strVal = String(val).trim();
-    if (strVal.endsWith('m')) {
-        return parseInt(strVal.replace('m', ''), 10) || 0;
+        this.instances.gaugeCpuRes = this.createSmallGauge('gauge-cpu-res', CONFIG.colors.green);
+        this.instances.gaugeCpuNs = this.createSmallGauge('gauge-cpu-ns', CONFIG.colors.green);
+        this.instances.gaugeMemUse = this.createSmallGauge('gauge-mem-use', CONFIG.colors.bluePrimary);
+        this.instances.gaugeMemPeak = this.createSmallGauge('gauge-mem-peak', CONFIG.colors.bluePrimary);
+
+        this.instances.blastChart = echarts.init(document.getElementById('blast-graph'));
+
+        window.addEventListener('resize', () => {
+            Object.values(this.instances).forEach(chart => chart.resize());
+        });
+    },
+
+    getLargeGaugeOpts(colorStops) {
+        return {
+            series: [{
+                type: 'gauge', startAngle: 180, endAngle: 0, radius: '100%', center: ['50%', '70%'],
+                pointer: { icon: 'path://M12.8,0.7l12,40.1H0.7L12.8,0.7z', length: '60%', width: 8, offsetCenter: [0, '-10%'], itemStyle: { color: 'auto' } },
+                axisLine: { lineStyle: { width: 20, color: colorStops } },
+                axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false }, detail: { show: false },
+                data: [{ value: 0 }]
+            }]
+        };
+    },
+
+    createSmallGauge(elementId, color) {
+        const chart = echarts.init(document.getElementById(elementId));
+        chart.setOption({
+            series: [{
+                type: 'gauge', startAngle: 210, endAngle: -30, radius: '100%', center: ['50%', '55%'],
+                pointer: { length: '50%', width: 4 },
+                axisLine: { lineStyle: { width: 10, color: [[1, color]] } },
+                axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
+                detail: { formatter: '{value}%', fontSize: 16, color: '#fff', offsetCenter: [0, '40%'] },
+                data: [{ value: 0 }]
+            }]
+        });
+        return chart;
+    },
+
+    updateGauges(data) {
+        const setVal = (chart, val) => chart && chart.setOption({ series: [{ data: [{ value: val || 0 }] }] });
+        setVal(this.instances.gaugeSavings, data.savingsPct);
+        setVal(this.instances.gaugeConsumption, data.consumptionPct);
+        setVal(this.instances.gaugeCpuRes, data.cpuResCluster);
+        setVal(this.instances.gaugeCpuNs, data.cpuNsCluster);
+        setVal(this.instances.gaugeMemUse, data.memUseCluster);
+        setVal(this.instances.gaugeMemPeak, data.memUsePeak);
+    },
+
+    renderBlastGraph(targetWl) {
+        const option = {
+            tooltip: {}, animationDurationUpdate: 1500, animationEasingUpdate: 'quinticInOut',
+            series: [{
+                type: 'graph', layout: 'force', force: { repulsion: 200, edgeLength: 50 }, roam: true,
+                label: { show: true, position: 'right', color: '#fff' },
+                data: [
+                    { name: targetWl || 'target', itemStyle: { color: CONFIG.colors.green }, symbolSize: 30 },
+                    { name: 'db-primary', itemStyle: { color: CONFIG.colors.bluePrimary }, symbolSize: 20 },
+                    { name: 'cache-redis', itemStyle: { color: CONFIG.colors.bluePrimary }, symbolSize: 20 },
+                    { name: 'auth-service', itemStyle: { color: CONFIG.colors.orange }, symbolSize: 20 }
+                ],
+                links: [
+                    { source: targetWl || 'target', target: 'db-primary' },
+                    { source: targetWl || 'target', target: 'cache-redis' },
+                    { source: 'auth-service', target: targetWl || 'target' }
+                ]
+            }]
+        };
+        this.instances.blastChart.setOption(option);
     }
-    // If it's a raw number string but meant to be cores vs millicores
-    const parsed = parseFloat(strVal) || 0;
-    return parsed < 100 ? parsed * 1000 : parsed;
-}
+};
 
-function updateUI(data, filename) {
-    currentData = data;
-    // Hide empty state, show insights
-    document.getElementById('empty-state').style.display = 'none';
-    document.getElementById('insight-section').style.display = 'block';
-    document.getElementById('qa-section').style.display = 'block';
-    document.getElementById('wow-features').style.display = 'block';
-    safeSetText('analysis-title', `Efficiency Analysis: ${filename}`);
-
-    // Update Slider limits safely
-    const cpuSlider = document.getElementById('cpu-slider');
-    const oldLimitInt = parseMillicores(data.oldLimit);
-    const newLimitInt = parseMillicores(data.newLimit);
-    
-    if (cpuSlider) {
-        cpuSlider.max = oldLimitInt > 0 ? oldLimitInt : 4000;
-        // Prevent slider value from exceeding max
-        cpuSlider.value = Math.min(newLimitInt, cpuSlider.max);
-        safeSetText('slider-val', cpuSlider.value + 'm');
-    }
-
-    // Animate Gauges
-    if(gaugeSavings) gaugeSavings.setOption({ series: [{ data: [{ value: data.savingsPct || 0 }] }] });
-    if(gaugeConsumption) gaugeConsumption.setOption({ series: [{ data: [{ value: data.consumptionPct || 0 }] }] });
-    if(gaugeCpuRes) gaugeCpuRes.setOption({ series: [{ data: [{ value: data.cpuResCluster || 0 }] }] });
-    if(gaugeCpuNs) gaugeCpuNs.setOption({ series: [{ data: [{ value: data.cpuNsCluster || 0 }] }] });
-    if(gaugeMemUse) gaugeMemUse.setOption({ series: [{ data: [{ value: data.memUseCluster || 0 }] }] });
-    if(gaugeMemPeak) gaugeMemPeak.setOption({ series: [{ data: [{ value: data.memUsePeak || 0 }] }] });
-
-    // Update Text Values
-    safeSetHTML('val-savings', `~${data.savingsPct || 0}% <br><span style="font-size: 1rem; color: #94a3b8;">$${data.savingsAbs || 0}/mo</span>`);
-    safeSetText('val-consumption', `~${data.consumptionPct || 0}%`);
-
-    // Update Insight Texts
-    safeSetText('cpu-old-limit', data.oldLimit || 'N/A');
-    safeSetText('cpu-new-limit', data.newLimit || 'N/A');
-    safeSetText('workload-name', `'${data.workload || 'unknown'}'`);
-    safeSetText('namespace-name', `'${data.namespace || 'unknown'}'`);
-
-    // Generate Code Snippets
-    generateCodeSnippets(data);
-
-    // WOW Features
-    generateESGMetrics(cpuSlider.value, oldLimitInt);
-    populateZombies();
-    drawBlastGraph(data.workload, data.namespace);
-}
-
-function generateCodeSnippets(data) {
-    const terraformCode = `resource "kubernetes_deployment" "k3s_optimized_workload" {
+// --- HTML TEMPLATES ---
+const Templates = {
+    getTerraformHCL(data) {
+        return \`resource "kubernetes_deployment" "k3s_optimized_workload" {
   metadata {
-    name      = "${data.workload}"
-    namespace = "${data.namespace}"
+    name      = "\${data.workload}"
+    namespace = "\${data.namespace}"
   }
 
   spec {
     template {
       spec {
         container {
-          name = "${data.workload}-container"
+          name = "\${data.workload}-container"
           resources {
-<span class="diff-del">-           limits   = { cpu = "${data.oldLimit}" }</span>
-<span class="diff-add">+           limits   = { cpu = "${data.newLimit}" }</span>
+<span class="diff-del">-           limits   = { cpu = "\${data.oldLimit}" }</span>
+<span class="diff-add">+           limits   = { cpu = "\${data.newLimit}" }</span>
           }
         }
       }
     }
   }
-}`;
+}\`;
+    },
 
-    const yamlCode = `apiVersion: apps/v1
+    getYamlManifest(data) {
+        return \`apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ${data.workload}
-  namespace: ${data.namespace}
+  name: \${data.workload}
+  namespace: \${data.namespace}
 spec:
   template:
     spec:
       containers:
-      - name: ${data.workload}-container
+      - name: \${data.workload}-container
         resources:
           limits:
-<span class="diff-del">-           cpu: "${data.oldLimit}"</span>
-<span class="diff-add">+           cpu: "${data.newLimit}"</span>`;
+<span class="diff-del">-           cpu: "\${data.oldLimit}"</span>
+<span class="diff-add">+           cpu: "\${data.newLimit}"</span>\`;
+    },
 
-    if (el1) el1.innerHTML = terraformCode;
-    if (el2) el2.innerHTML = yamlCode;
-}
+    getZombieTableRows(zombies) {
+        return zombies.map(z => 
+            \`<tr>
+                <td><code>\${z.ns}</code></td>
+                <td><code>\${z.wl}</code></td>
+                <td style="color: \${CONFIG.colors.red};">\${z.cpu}</td>
+                <td>\${z.net}</td>
+                <td>\${z.waste}</td>
+            </tr>\`
+        ).join('');
+    },
 
-function resetUI() {
-    currentUploadSession++; // Invalidate pending file reads
-    currentData = null;
-    const fileInput = document.getElementById('file-upload');
-    if(fileInput) fileInput.value = '';
-    
-    document.getElementById('empty-state').style.display = 'flex';
-    document.getElementById('insight-section').style.display = 'none';
-    document.getElementById('qa-section').style.display = 'none';
-    document.getElementById('wow-features').style.display = 'none';
-    safeSetText('analysis-title', `Efficiency Analysis: Waiting for file...`);
-
-    resetChat();
-
-    const zeroData = { series: [{ data: [{ value: 0 }] }] };
-    if(gaugeSavings) gaugeSavings.setOption(zeroData);
-    if(gaugeConsumption) gaugeConsumption.setOption(zeroData);
-    if(gaugeCpuRes) gaugeCpuRes.setOption(zeroData);
-    if(gaugeCpuNs) gaugeCpuNs.setOption(zeroData);
-    if(gaugeMemUse) gaugeMemUse.setOption(zeroData);
-    if(gaugeMemPeak) gaugeMemPeak.setOption(zeroData);
-
-    safeSetText('val-savings', '$0/mo');
-    safeSetText('val-consumption', '0%');
-}
-
-function handleQueryClick(queryId, queryText) {
-    if (!currentData) return;
-    
-    const chatWindow = document.getElementById('chat-window');
-    
-    // Remove system placeholder if exists
-    const systemMsg = chatWindow.querySelector('.system');
-    if (systemMsg) systemMsg.remove();
-
-    // Add user message
-    let userMsg = document.createElement('div');
-    userMsg.className = 'chat-message user';
-    userMsg.innerText = queryText;
-    chatWindow.appendChild(userMsg);
-    
-    // Add bot response
-    let botMsg = document.createElement('div');
-    botMsg.className = 'chat-message bot';
-    
-    if (queryId === '1') {
-        botMsg.innerHTML = `<strong>Data-Driven Analysis:</strong> The telemetry indicates an "Efficiency" opportunity for the <code>${currentData.workload}</code> workload in the <code>${currentData.namespace}</code> domain. The container has been allocated a high CPU limit (${currentData.oldLimit}) but consistently utilizes only a small fraction (~${currentData.consumptionPct}%). This underutilized resource reservation causes congestion on highly constrained k3s nodes without delivering business value.`;
-    } else if (queryId === '2') {
-        botMsg.innerHTML = `<strong>Cost Impact:</strong> By implementing this optimization, you will achieve an exact cost reduction of <strong>$${currentData.savingsAbs}/month</strong>. Your overall efficiency will increase by ~${currentData.savingsPct}%. Since this action is an efficiency scale-down of wasted resources, it directly reduces your target optimized spend without risking application downtime.`;
-    } else if (queryId === '3') {
-        botMsg.innerHTML = `<strong>Solution & Runtime Impact:</strong> You should scale down the CPU limit from ${currentData.oldLimit} to ${currentData.newLimit}.<br><br>
-        <strong class="highlight-red">CRITICAL CONTAINER ISOLATION BOUNDARY:</strong> This optimization ONLY modifies the infrastructure manifest layer (requests and limits). It <strong>NEVER touches or alters a single line of application source code inside the container.</strong> Because a safe overhead buffer is left (peak usage is only ${currentData.memUsePeak}%), application execution will remain 100% stable.<br><br>
-        <strong>Terraform Snippet:</strong>
-        <pre><code class="language-hcl">resource "kubernetes_deployment" "${currentData.workload}" {
-  spec {
-    template {
-      spec {
-        container {
-          name = "${currentData.workload}-container"
-          resources {
-            limits = { cpu = "${currentData.newLimit}" }
-          }
-        }
-      }
-    }
-  }
-}</code></pre>`;
-    }
-    
-    chatWindow.appendChild(botMsg);
-    chatWindow.scrollTop = chatWindow.scrollHeight;
-}
-
-function resetChat() {
-    const chatWindow = document.getElementById('chat-window');
-    chatWindow.innerHTML = '<div class="chat-message system">Select a query above to interact with the data-driven FinOps Assistant.</div>';
-}
-
-/* WOW Capabilities Logic */
-
-function handleSliderChange(e) {
-    if (!currentData) return;
-    const newVal = parseInt(e.target.value) || 0;
-    safeSetText('slider-val', newVal + 'm');
-    
-    // Recalculate savings based on slider securely
-    const oldLimitInt = parseMillicores(currentData.oldLimit);
-    
-    // Prevent Division by Zero if oldLimitInt somehow evaluates to 0
-    const safeOldLimit = oldLimitInt > 0 ? oldLimitInt : 1; 
-    
-    const savedM = Math.max(0, oldLimitInt - newVal);
-    const savingsRatio = savedM / safeOldLimit;
-    
-    // Ensure we don't go negative or NaN
-    let newSavingsPct = Math.max(0, Math.round(savingsRatio * 100) || 0);
-    // Use the actual original savingsAbs as a base if available instead of hardcoded 450
-    const baseSavings = currentData.savingsAbs || 450;
-    const baseSavingsRatio = (parseMillicores(currentData.oldLimit) - parseMillicores(currentData.newLimit)) / safeOldLimit || 1;
-    
-    // Project the absolute savings proportionally
-    let newSavingsAbs = Math.max(0, Math.round((savingsRatio / baseSavingsRatio) * baseSavings) || 0);
-    
-    // Update Gauges & UI
-    if(gaugeSavings) gaugeSavings.setOption({ series: [{ data: [{ value: newSavingsPct }] }] });
-    safeSetHTML('val-savings', `~${newSavingsPct}% <br><span style="font-size: 1rem; color: #94a3b8;">$${newSavingsAbs}/mo</span>`);
-    
-    // Re-generate snippets and ESG
-    let tempData = { ...currentData, newLimit: newVal + 'm' };
-    generateCodeSnippets(tempData);
-    generateESGMetrics(newVal, oldLimitInt);
-}
-
-function generateESGMetrics(newVal, oldLimitInt) {
-    const savedM = Math.max(0, oldLimitInt - newVal);
-    // Static multipliers for wow factor
-    const lbsCo2PerM = 0.05; 
-    const treesPerLbs = 0.02;
-
-    const totalCo2 = (savedM * lbsCo2PerM).toFixed(1);
-    const totalTrees = Math.round(totalCo2 * treesPerLbs) || 0;
-
-    safeSetText('co2-val', isNaN(totalCo2) ? "0.0" : totalCo2);
-    safeSetText('tree-val', totalTrees);
-}
-
-function populateZombies() {
-    const tbody = document.querySelector('#zombie-table tbody');
-    // Mock zombie workloads found in the cluster "file"
-    const zombies = [
-        { ns: 'data-eng', wl: 'spark-worker-idle', cpu: '0.1%', net: '0b / 0b', waste: '$120/mo' },
-        { ns: 'marketing', wl: 'campaign-cache-old', cpu: '0.0%', net: '12b / 0b', waste: '$85/mo' },
-        { ns: 'finance-ops', wl: 'legacy-report-gen', cpu: '1.2%', net: '1kb / 2kb', waste: '$210/mo' }
-    ];
-
-    tbody.innerHTML = zombies.map(z => 
-        `<tr>
-            <td><code>${z.ns}</code></td>
-            <td><code>${z.wl}</code></td>
-            <td style="color: #ef4444;">${z.cpu}</td>
-            <td>${z.net}</td>
-            <td>${z.waste}</td>
-        </tr>`
-    ).join('');
-}
-
-function drawBlastGraph(targetWl, targetNs) {
-    // A mock topology graph of the namespace
-    const option = {
-        tooltip: {},
-        animationDurationUpdate: 1500,
-        animationEasingUpdate: 'quinticInOut',
-        series: [{
-            type: 'graph',
-            layout: 'force',
-            force: { repulsion: 200, edgeLength: 50 },
-            roam: true,
-            label: { show: true, position: 'right', color: '#fff' },
-            data: [
-                { name: targetWl, itemStyle: { color: '#10b981' }, symbolSize: 30 },
-                { name: 'db-primary', itemStyle: { color: '#3b82f6' }, symbolSize: 20 },
-                { name: 'cache-redis', itemStyle: { color: '#3b82f6' }, symbolSize: 20 },
-                { name: 'auth-service', itemStyle: { color: '#f59e0b' }, symbolSize: 20 }
-            ],
-            links: [
-                { source: targetWl, target: 'db-primary' },
-                { source: targetWl, target: 'cache-redis' },
-                { source: 'auth-service', target: targetWl }
-            ]
-        }]
-    };
-    blastChart.setOption(option);
-}
-
-function downloadGitOpsPatch() {
-    if (!currentData) return;
-    
-    // Get the dynamically generated YAML from the DOM (strip HTML tags)
-    const yamlContent = document.getElementById('code-yaml').innerText;
-    
-    const patchContent = 
-`From: FinOps AI Assistant
-Date: ${new Date().toUTCString()}
-Subject: [FinOps] Optimize k3s limits for ${currentData.workload}
+    getGitPatch(yamlContent, data) {
+        return \`From: FinOps AI Assistant
+Date: \${new Date().toUTCString()}
+Subject: [FinOps] Optimize k3s limits for \${data.workload}
 
 This patch safely reduces CPU limits to eliminate waste based on telemetry data.
 Application runtime remains 100% stable.
 
---- a/manifests/${currentData.namespace}/${currentData.workload}.yaml
-+++ b/manifests/${currentData.namespace}/${currentData.workload}.yaml
+--- a/manifests/\${data.namespace}/\${data.workload}.yaml
++++ b/manifests/\${data.namespace}/\${data.workload}.yaml
 
-${yamlContent}`;
+\${yamlContent}\`;
+    }
+};
 
-    const blob = new Blob([patchContent], { type: 'text/plain' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `optimize-${currentData.workload}.patch`;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-}
+// --- UI MANAGER ---
+const UIManager = {
+    safeSetText(id, text) {
+        const el = document.getElementById(id);
+        if (el) el.innerText = text;
+    },
+
+    safeSetHTML(id, html) {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = html;
+    },
+
+    showSections(show) {
+        const display = show ? 'block' : 'none';
+        const emptyDisplay = show ? 'none' : 'flex';
+        
+        document.getElementById('empty-state').style.display = emptyDisplay;
+        document.getElementById('insight-section').style.display = display;
+        document.getElementById('qa-section').style.display = display;
+        document.getElementById('wow-features').style.display = display;
+    },
+
+    updateSlider(oldLimitStr, newLimitStr) {
+        const cpuSlider = document.getElementById('cpu-slider');
+        const oldLimitInt = FinOpsCalculator.parseMillicores(oldLimitStr);
+        const newLimitInt = FinOpsCalculator.parseMillicores(newLimitStr);
+        
+        if (cpuSlider) {
+            cpuSlider.max = oldLimitInt > 0 ? oldLimitInt : CONFIG.fallbackMaxCpu;
+            cpuSlider.value = Math.min(newLimitInt, cpuSlider.max);
+            this.safeSetText('slider-val', cpuSlider.value + 'm');
+        }
+        return { newVal: cpuSlider ? cpuSlider.value : newLimitInt, oldLimitInt };
+    },
+
+    populateZombies() {
+        const zombies = [
+            { ns: 'data-eng', wl: 'spark-worker-idle', cpu: '0.1%', net: '0b / 0b', waste: '$120/mo' },
+            { ns: 'marketing', wl: 'campaign-cache-old', cpu: '0.0%', net: '12b / 0b', waste: '$85/mo' },
+            { ns: 'finance-ops', wl: 'legacy-report-gen', cpu: '1.2%', net: '1kb / 2kb', waste: '$210/mo' }
+        ];
+        const tbody = document.querySelector('#zombie-table tbody');
+        if(tbody) tbody.innerHTML = Templates.getZombieTableRows(zombies);
+    },
+
+    resetChat() {
+        this.safeSetHTML('chat-window', '<div class="chat-message system">Select a query above to interact with the data-driven FinOps Assistant.</div>');
+    },
+
+    appendChatMsg(type, html) {
+        const chatWindow = document.getElementById('chat-window');
+        if (!chatWindow) return;
+        
+        const systemMsg = chatWindow.querySelector('.system');
+        if (systemMsg) systemMsg.remove();
+
+        const msg = document.createElement('div');
+        msg.className = \`chat-message \${type}\`;
+        msg.innerHTML = html;
+        chatWindow.appendChild(msg);
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+    },
+
+    downloadPatch() {
+        if (!State.data) return;
+        const yamlContent = document.getElementById('code-yaml').innerText;
+        const patchContent = Templates.getGitPatch(yamlContent, State.data);
+
+        const blob = new Blob([patchContent], { type: 'text/plain' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = \`optimize-\${State.data.workload}.patch\`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+    }
+};
+
+// --- APP CONTROLLER ---
+const AppController = {
+    init() {
+        ChartManager.init();
+        this.bindEvents();
+    },
+
+    bindEvents() {
+        const getEl = id => document.getElementById(id);
+        
+        getEl('file-upload')?.addEventListener('change', this.handleFileUpload.bind(this));
+        getEl('btn-reset')?.addEventListener('click', this.resetUI.bind(this));
+        getEl('cpu-slider')?.addEventListener('input', this.handleSliderChange.bind(this));
+        getEl('btn-gitops')?.addEventListener('click', () => UIManager.downloadPatch());
+
+        document.querySelectorAll('.query-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => this.handleQueryClick(e.target.dataset.query, e.target.innerText));
+        });
+    },
+
+    handleFileUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const sessionId = ++State.uploadSession;
+        const reader = new FileReader();
+
+        reader.onload = (e) => {
+            if (sessionId !== State.uploadSession) return;
+            const content = e.target.result;
+            
+            if (!content || !content.trim()) return alert("The uploaded file is empty.");
+
+            try {
+                if (file.name.endsWith('.json') || content.trim().startsWith('{') || content.trim().startsWith('[')) {
+                    this.processFinOpsData(JSON.parse(content), file.name);
+                } else if (file.name.endsWith('.csv')) {
+                    this.processFinOpsData({ _type: 'csv', raw: content }, file.name);
+                } else {
+                    alert("Unsupported file format. Please upload JSON or CSV.");
+                }
+            } catch (error) {
+                console.error("Error parsing file:", error);
+                alert("Failed to parse file. Ensuring it's valid JSON or CSV.");
+            }
+        };
+        reader.readAsText(file);
+    },
+
+    processFinOpsData(data, filename) {
+        let simulatedData = {
+            savingsPct: 35, savingsAbs: 450, consumptionPct: 12,
+            cpuResCluster: 10, cpuNsCluster: 0, memUseCluster: 0, memUsePeak: 28,
+            workload: 'payment-gateway-prod', namespace: 'finance-ops',
+            oldLimit: '4000m', newLimit: '1000m'
+        };
+
+        if (!filename.includes('turbonomic') && !filename.includes('test_alert')) {
+            simulatedData.savingsPct = Math.floor(Math.random() * 80) + 10;
+            simulatedData.savingsAbs = Math.floor(Math.random() * 2000) + 100;
+            simulatedData.consumptionPct = Math.floor(Math.random() * 60) + 5;
+            simulatedData.cpuResCluster = Math.floor(Math.random() * 40);
+            simulatedData.memUsePeak = Math.floor(Math.random() * 50) + 10;
+        }
+
+        this.updateUI(simulatedData, filename);
+    },
+
+    updateUI(data, filename) {
+        State.data = data;
+        UIManager.showSections(true);
+        UIManager.safeSetText('analysis-title', \`Efficiency Analysis: \${filename}\`);
+
+        const { newVal, oldLimitInt } = UIManager.updateSlider(data.oldLimit, data.newLimit);
+
+        ChartManager.updateGauges(data);
+
+        UIManager.safeSetHTML('val-savings', \`~\${data.savingsPct || 0}% <br><span style="font-size: 1rem; color: #94a3b8;">$\${data.savingsAbs || 0}/mo</span>\`);
+        UIManager.safeSetText('val-consumption', \`~\${data.consumptionPct || 0}%\`);
+        UIManager.safeSetText('cpu-old-limit', data.oldLimit || 'N/A');
+        UIManager.safeSetText('cpu-new-limit', data.newLimit || 'N/A');
+        UIManager.safeSetText('workload-name', \`'\${data.workload || 'unknown'}'\`);
+        UIManager.safeSetText('namespace-name', \`'\${data.namespace || 'unknown'}'\`);
+
+        this.generateCodeSnippets(data);
+        this.generateESGMetrics(newVal, oldLimitInt);
+        
+        UIManager.populateZombies();
+        ChartManager.renderBlastGraph(data.workload);
+    },
+
+    handleSliderChange(e) {
+        if (!State.data) return;
+        const newVal = parseInt(e.target.value) || 0;
+        UIManager.safeSetText('slider-val', newVal + 'm');
+        
+        const { newSavingsPct, newSavingsAbs, savedM } = FinOpsCalculator.calculateSliderSavings(newVal);
+        
+        ChartManager.instances.gaugeSavings?.setOption({ series: [{ data: [{ value: newSavingsPct }] }] });
+        UIManager.safeSetHTML('val-savings', \`~\${newSavingsPct}% <br><span style="font-size: 1rem; color: #94a3b8;">$\${newSavingsAbs}/mo</span>\`);
+        
+        const tempData = { ...State.data, newLimit: newVal + 'm' };
+        this.generateCodeSnippets(tempData);
+        
+        const esg = FinOpsCalculator.calculateESG(savedM);
+        UIManager.safeSetText('co2-val', esg.totalCo2);
+        UIManager.safeSetText('tree-val', esg.totalTrees);
+    },
+
+    generateCodeSnippets(data) {
+        UIManager.safeSetHTML('code-terraform', Templates.getTerraformHCL(data));
+        UIManager.safeSetHTML('code-yaml', Templates.getYamlManifest(data));
+    },
+
+    generateESGMetrics(newVal, oldLimitInt) {
+        const savedM = Math.max(0, oldLimitInt - newVal);
+        const esg = FinOpsCalculator.calculateESG(savedM);
+        UIManager.safeSetText('co2-val', esg.totalCo2);
+        UIManager.safeSetText('tree-val', esg.totalTrees);
+    },
+
+    handleQueryClick(queryId, queryText) {
+        if (!State.data) return;
+        
+        UIManager.appendChatMsg('user', queryText);
+        
+        let html = '';
+        if (queryId === '1') {
+            html = \`<strong>Data-Driven Analysis:</strong> The telemetry indicates an "Efficiency" opportunity for the <code>\${State.data.workload}</code> workload in the <code>\${State.data.namespace}</code> domain. The container has been allocated a high CPU limit (\${State.data.oldLimit}) but consistently utilizes only a small fraction (~\${State.data.consumptionPct}%). This underutilized resource reservation causes congestion on highly constrained k3s nodes without delivering business value.\`;
+        } else if (queryId === '2') {
+            html = \`<strong>Cost Impact:</strong> By implementing this optimization, you will achieve an exact cost reduction of <strong>$\${State.data.savingsAbs}/month</strong>. Your overall efficiency will increase by ~\${State.data.savingsPct}%. Since this action is an efficiency scale-down of wasted resources, it directly reduces your target optimized spend without risking application downtime.\`;
+        } else if (queryId === '3') {
+            html = \`<strong>Solution & Runtime Impact:</strong> You should scale down the CPU limit from \${State.data.oldLimit} to \${State.data.newLimit}.<br><br>
+            <strong class="highlight-red">CRITICAL CONTAINER ISOLATION BOUNDARY:</strong> This optimization ONLY modifies the infrastructure manifest layer (requests and limits). It <strong>NEVER touches or alters a single line of application source code inside the container.</strong> Because a safe overhead buffer is left (peak usage is only \${State.data.memUsePeak}%), application execution will remain 100% stable.<br><br>
+            <strong>Terraform Snippet:</strong>
+            <pre><code class="language-hcl">\${document.getElementById('code-terraform')?.innerText || ''}</code></pre>\`;
+        }
+        
+        UIManager.appendChatMsg('bot', html);
+    },
+
+    resetUI() {
+        State.uploadSession++; 
+        State.data = null;
+        
+        const fileInput = document.getElementById('file-upload');
+        if(fileInput) fileInput.value = '';
+        
+        UIManager.showSections(false);
+        UIManager.safeSetText('analysis-title', \`Efficiency Analysis: Waiting for file...\`);
+        UIManager.resetChat();
+
+        ChartManager.updateGauges({}); // Pass empty data for zeros
+        UIManager.safeSetText('val-savings', '$0/mo');
+        UIManager.safeSetText('val-consumption', '0%');
+    }
+};
+
+// --- BOOTSTRAP ---
+document.addEventListener("DOMContentLoaded", () => AppController.init());

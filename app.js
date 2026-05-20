@@ -2,6 +2,7 @@
 const chartTheme = 'dark';
 let gaugeSavings, gaugeConsumption, gaugeCpuRes, gaugeCpuNs, gaugeMemUse, gaugeMemPeak, blastChart;
 let currentData = null; // Store parsed data globally
+let currentUploadSession = 0; // Prevent race conditions with FileReader
 
 document.addEventListener("DOMContentLoaded", () => {
     initCharts();
@@ -149,19 +150,26 @@ function handleFileUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
 
+    // Increment session to invalidate any currently running async reads
+    const sessionId = ++currentUploadSession;
+
     const reader = new FileReader();
     reader.onload = (e) => {
+        // Race condition prevention: if user reset or uploaded a new file while reading
+        if (sessionId !== currentUploadSession) return;
+
         const content = e.target.result;
+        if (!content || !content.trim()) {
+            alert("The uploaded file is empty.");
+            return;
+        }
+
         let data;
-        
         try {
-            // Very simple auto-detect JSON vs CSV based on first char or file extension
             if (file.name.endsWith('.json') || content.trim().startsWith('{') || content.trim().startsWith('[')) {
                 data = JSON.parse(content);
-                // Simple mapping strategy for demonstration: extract top-level keys or mock if array
                 processFinOpsData(data, file.name);
             } else if (file.name.endsWith('.csv')) {
-                // Mock CSV parsing
                 processFinOpsData({ _type: 'csv', raw: content }, file.name);
             } else {
                 alert("Unsupported file format. Please upload JSON or CSV.");
@@ -207,6 +215,29 @@ function processFinOpsData(data, filename) {
     updateUI(simulatedData, filename);
 }
 
+// Safe DOM manipulators
+function safeSetText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.innerText = text;
+}
+
+function safeSetHTML(id, html) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = html;
+}
+
+function parseMillicores(val) {
+    if (val == null) return 0;
+    if (typeof val === 'number') return val < 100 ? val * 1000 : val; // Assume small numbers are cores
+    const strVal = String(val).trim();
+    if (strVal.endsWith('m')) {
+        return parseInt(strVal.replace('m', ''), 10) || 0;
+    }
+    // If it's a raw number string but meant to be cores vs millicores
+    const parsed = parseFloat(strVal) || 0;
+    return parsed < 100 ? parsed * 1000 : parsed;
+}
+
 function updateUI(data, filename) {
     currentData = data;
     // Hide empty state, show insights
@@ -214,32 +245,37 @@ function updateUI(data, filename) {
     document.getElementById('insight-section').style.display = 'block';
     document.getElementById('qa-section').style.display = 'block';
     document.getElementById('wow-features').style.display = 'block';
-    document.getElementById('analysis-title').innerText = `Efficiency Analysis: ${filename}`;
+    safeSetText('analysis-title', `Efficiency Analysis: ${filename}`);
 
-    // Update Slider limits
+    // Update Slider limits safely
     const cpuSlider = document.getElementById('cpu-slider');
-    const oldLimitInt = parseInt(data.oldLimit.replace('m', ''));
-    cpuSlider.max = oldLimitInt;
-    cpuSlider.value = parseInt(data.newLimit.replace('m', ''));
-    document.getElementById('slider-val').innerText = cpuSlider.value + 'm';
+    const oldLimitInt = parseMillicores(data.oldLimit);
+    const newLimitInt = parseMillicores(data.newLimit);
+    
+    if (cpuSlider) {
+        cpuSlider.max = oldLimitInt > 0 ? oldLimitInt : 4000;
+        // Prevent slider value from exceeding max
+        cpuSlider.value = Math.min(newLimitInt, cpuSlider.max);
+        safeSetText('slider-val', cpuSlider.value + 'm');
+    }
 
     // Animate Gauges
-    gaugeSavings.setOption({ series: [{ data: [{ value: data.savingsPct }] }] });
-    gaugeConsumption.setOption({ series: [{ data: [{ value: data.consumptionPct }] }] });
-    gaugeCpuRes.setOption({ series: [{ data: [{ value: data.cpuResCluster }] }] });
-    gaugeCpuNs.setOption({ series: [{ data: [{ value: data.cpuNsCluster }] }] });
-    gaugeMemUse.setOption({ series: [{ data: [{ value: data.memUseCluster }] }] });
-    gaugeMemPeak.setOption({ series: [{ data: [{ value: data.memUsePeak }] }] });
+    if(gaugeSavings) gaugeSavings.setOption({ series: [{ data: [{ value: data.savingsPct || 0 }] }] });
+    if(gaugeConsumption) gaugeConsumption.setOption({ series: [{ data: [{ value: data.consumptionPct || 0 }] }] });
+    if(gaugeCpuRes) gaugeCpuRes.setOption({ series: [{ data: [{ value: data.cpuResCluster || 0 }] }] });
+    if(gaugeCpuNs) gaugeCpuNs.setOption({ series: [{ data: [{ value: data.cpuNsCluster || 0 }] }] });
+    if(gaugeMemUse) gaugeMemUse.setOption({ series: [{ data: [{ value: data.memUseCluster || 0 }] }] });
+    if(gaugeMemPeak) gaugeMemPeak.setOption({ series: [{ data: [{ value: data.memUsePeak || 0 }] }] });
 
     // Update Text Values
-    document.getElementById('val-savings').innerHTML = `~${data.savingsPct}% <br><span style="font-size: 1rem; color: #94a3b8;">$${data.savingsAbs}/mo</span>`;
-    document.getElementById('val-consumption').innerText = `~${data.consumptionPct}%`;
+    safeSetHTML('val-savings', `~${data.savingsPct || 0}% <br><span style="font-size: 1rem; color: #94a3b8;">$${data.savingsAbs || 0}/mo</span>`);
+    safeSetText('val-consumption', `~${data.consumptionPct || 0}%`);
 
     // Update Insight Texts
-    document.getElementById('cpu-old-limit').innerText = data.oldLimit;
-    document.getElementById('cpu-new-limit').innerText = data.newLimit;
-    document.getElementById('workload-name').innerText = `'${data.workload}'`;
-    document.getElementById('namespace-name').innerText = `'${data.namespace}'`;
+    safeSetText('cpu-old-limit', data.oldLimit || 'N/A');
+    safeSetText('cpu-new-limit', data.newLimit || 'N/A');
+    safeSetText('workload-name', `'${data.workload || 'unknown'}'`);
+    safeSetText('namespace-name', `'${data.namespace || 'unknown'}'`);
 
     // Generate Code Snippets
     generateCodeSnippets(data);
@@ -287,31 +323,34 @@ spec:
 <span class="diff-del">-           cpu: "${data.oldLimit}"</span>
 <span class="diff-add">+           cpu: "${data.newLimit}"</span>`;
 
-    document.getElementById('code-terraform').innerHTML = terraformCode;
-    document.getElementById('code-yaml').innerHTML = yamlCode;
+    if (el1) el1.innerHTML = terraformCode;
+    if (el2) el2.innerHTML = yamlCode;
 }
 
 function resetUI() {
+    currentUploadSession++; // Invalidate pending file reads
     currentData = null;
-    document.getElementById('file-upload').value = '';
+    const fileInput = document.getElementById('file-upload');
+    if(fileInput) fileInput.value = '';
+    
     document.getElementById('empty-state').style.display = 'flex';
     document.getElementById('insight-section').style.display = 'none';
     document.getElementById('qa-section').style.display = 'none';
     document.getElementById('wow-features').style.display = 'none';
-    document.getElementById('analysis-title').innerText = `Efficiency Analysis: Waiting for file...`;
+    safeSetText('analysis-title', `Efficiency Analysis: Waiting for file...`);
 
     resetChat();
 
     const zeroData = { series: [{ data: [{ value: 0 }] }] };
-    gaugeSavings.setOption(zeroData);
-    gaugeConsumption.setOption(zeroData);
-    gaugeCpuRes.setOption(zeroData);
-    gaugeCpuNs.setOption(zeroData);
-    gaugeMemUse.setOption(zeroData);
-    gaugeMemPeak.setOption(zeroData);
+    if(gaugeSavings) gaugeSavings.setOption(zeroData);
+    if(gaugeConsumption) gaugeConsumption.setOption(zeroData);
+    if(gaugeCpuRes) gaugeCpuRes.setOption(zeroData);
+    if(gaugeCpuNs) gaugeCpuNs.setOption(zeroData);
+    if(gaugeMemUse) gaugeMemUse.setOption(zeroData);
+    if(gaugeMemPeak) gaugeMemPeak.setOption(zeroData);
 
-    document.getElementById('val-savings').innerText = '$0/mo';
-    document.getElementById('val-consumption').innerText = '0%';
+    safeSetText('val-savings', '$0/mo');
+    safeSetText('val-consumption', '0%');
 }
 
 function handleQueryClick(queryId, queryText) {
@@ -370,21 +409,30 @@ function resetChat() {
 
 function handleSliderChange(e) {
     if (!currentData) return;
-    const newVal = parseInt(e.target.value);
-    document.getElementById('slider-val').innerText = newVal + 'm';
+    const newVal = parseInt(e.target.value) || 0;
+    safeSetText('slider-val', newVal + 'm');
     
-    // Recalculate savings based on slider (mock math)
-    const oldLimitInt = parseInt(currentData.oldLimit.replace('m', ''));
-    const savedM = oldLimitInt - newVal;
-    const savingsRatio = savedM / oldLimitInt;
+    // Recalculate savings based on slider securely
+    const oldLimitInt = parseMillicores(currentData.oldLimit);
     
-    // Ensure we don't go negative or below actual consumption
-    let newSavingsPct = Math.max(0, Math.round(savingsRatio * 100));
-    let newSavingsAbs = Math.max(0, Math.round((savedM / 3000) * 450)); // Mock conversion
+    // Prevent Division by Zero if oldLimitInt somehow evaluates to 0
+    const safeOldLimit = oldLimitInt > 0 ? oldLimitInt : 1; 
+    
+    const savedM = Math.max(0, oldLimitInt - newVal);
+    const savingsRatio = savedM / safeOldLimit;
+    
+    // Ensure we don't go negative or NaN
+    let newSavingsPct = Math.max(0, Math.round(savingsRatio * 100) || 0);
+    // Use the actual original savingsAbs as a base if available instead of hardcoded 450
+    const baseSavings = currentData.savingsAbs || 450;
+    const baseSavingsRatio = (parseMillicores(currentData.oldLimit) - parseMillicores(currentData.newLimit)) / safeOldLimit || 1;
+    
+    // Project the absolute savings proportionally
+    let newSavingsAbs = Math.max(0, Math.round((savingsRatio / baseSavingsRatio) * baseSavings) || 0);
     
     // Update Gauges & UI
-    gaugeSavings.setOption({ series: [{ data: [{ value: newSavingsPct }] }] });
-    document.getElementById('val-savings').innerHTML = `~${newSavingsPct}% <br><span style="font-size: 1rem; color: #94a3b8;">$${newSavingsAbs}/mo</span>`;
+    if(gaugeSavings) gaugeSavings.setOption({ series: [{ data: [{ value: newSavingsPct }] }] });
+    safeSetHTML('val-savings', `~${newSavingsPct}% <br><span style="font-size: 1rem; color: #94a3b8;">$${newSavingsAbs}/mo</span>`);
     
     // Re-generate snippets and ESG
     let tempData = { ...currentData, newLimit: newVal + 'm' };
@@ -399,10 +447,10 @@ function generateESGMetrics(newVal, oldLimitInt) {
     const treesPerLbs = 0.02;
 
     const totalCo2 = (savedM * lbsCo2PerM).toFixed(1);
-    const totalTrees = Math.round(totalCo2 * treesPerLbs);
+    const totalTrees = Math.round(totalCo2 * treesPerLbs) || 0;
 
-    document.getElementById('co2-val').innerText = totalCo2;
-    document.getElementById('tree-val').innerText = totalTrees;
+    safeSetText('co2-val', isNaN(totalCo2) ? "0.0" : totalCo2);
+    safeSetText('tree-val', totalTrees);
 }
 
 function populateZombies() {

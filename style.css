@@ -376,6 +376,29 @@ input[type="file"] {
     border-radius: 4px;
 }
 
+/* Skeleton Loading Animations */
+@keyframes shimmer {
+    0% { background-position: -1000px 0; }
+    100% { background-position: 1000px 0; }
+}
+
+.loading-skeleton * {
+    color: transparent !important;
+    border-color: transparent !important;
+}
+
+.loading-skeleton h2, .loading-skeleton h3, .loading-skeleton .gauge-chart, .loading-skeleton .gauge-value, .loading-skeleton p, .loading-skeleton td, .loading-skeleton .btn, .loading-skeleton code {
+    background: linear-gradient(90deg, var(--bg-dark) 25%, var(--bg-card) 50%, var(--bg-dark) 75%);
+    background-size: 1000px 100%;
+    animation: shimmer 2s infinite linear;
+    border-radius: var(--radius-md);
+    color: transparent !important;
+}
+
+.loading-skeleton .gauge-chart {
+    border-radius: 50%;
+}
+
 .code-block-wrapper {
     background: #000;
     border-radius: 8px;

@@ -27,15 +27,15 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                     Upload New File
                 </label>
-                <input id="file-upload" type="file" accept=".json,.csv" />
-                <button id="btn-reset" class="btn btn-secondary">
+                <input id="file-upload" type="file" accept=".json,.csv" aria-label="Upload FinOps Data File" />
+                <button id="btn-reset" class="btn btn-secondary" aria-label="Reset Dashboard UI">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
                     Reset UI
                 </button>
             </div>
         </header>
 
-        <main class="dashboard" id="dashboard">
+        <main class="dashboard" id="dashboard" role="main" aria-live="polite">
             <div class="glass-panel main-panel">
                 <div class="panel-header">
                     <div class="icon-bg">
@@ -88,7 +88,7 @@
                             <p class="desc">Drag to simulate new CPU limit (m) and project savings.</p>
                             <div class="slider-container">
                                 <span>100m</span>
-                                <input type="range" id="cpu-slider" min="100" max="4000" value="1000" step="100">
+                                <input type="range" id="cpu-slider" min="100" max="4000" value="1000" step="100" aria-label="CPU Limit Simulator Slider">
                                 <span>4000m</span>
                             </div>
                             <div class="slider-readout">Target: <span id="slider-val" class="badge">1000m</span></div>
@@ -216,6 +216,6 @@
         </main>
     </div>
 
-    <script src="app.js"></script>
+    <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

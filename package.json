@@ -1,0 +1,36 @@
+{
+  "name": "finops-analyzer",
+  "version": "1.0.0",
+  "description": "<div align=\"center\">   <img src=\"https://img.shields.io/badge/Status-Active-success.svg?style=for-the-badge\" alt=\"Status Active\" />   <img src=\"https://img.shields.io/badge/Environment-k3s_Kubernetes-326ce5.svg?style=for-the-badge&logo=kubernetes\" alt=\"Kubernetes k3s\" />   <img src=\"https://img.shields.io/badge/Tech_Stack-HTML_|_CSS_|_JS-f59e0b.svg?style=for-the-badge\" alt=\"Tech Stack\" /> </div> <br/>",
+  "main": "app.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zivd01/finops-analyzer.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/zivd01/finops-analyzer/issues"
+  },
+  "homepage": "https://github.com/zivd01/finops-analyzer#readme",
+  "dependencies": {
+    "echarts": "^6.1.0",
+    "papaparse": "^5.5.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@types/echarts": "^4.9.22",
+    "@types/papaparse": "^5.5.2",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.13",
+    "vitest": "^4.1.7"
+  }
+}

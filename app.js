@@ -125,25 +125,69 @@ const ChartManager = {
     },
 
     renderBlastGraph(targetWl) {
+        // Force resize to fix off-center rendering when container goes from display:none to block
+        setTimeout(() => this.instances.blastChart.resize(), 50);
+
+        const rootName = targetWl || 'target';
+        this.graphData = [
+            { id: 'root', name: rootName, itemStyle: { color: CONFIG.colors.green }, symbolSize: 30 },
+            { id: 'db1', name: 'db-primary', itemStyle: { color: CONFIG.colors.bluePrimary }, symbolSize: 20 },
+            { id: 'cache', name: 'cache-redis', itemStyle: { color: CONFIG.colors.bluePrimary }, symbolSize: 20 },
+            { id: 'auth', name: 'auth-service', itemStyle: { color: CONFIG.colors.orange }, symbolSize: 20 }
+        ];
+        this.graphLinks = [
+            { source: 'root', target: 'db1' },
+            { source: 'root', target: 'cache' },
+            { source: 'auth', target: 'root' }
+        ];
+
         const option = {
-            tooltip: {}, animationDurationUpdate: 1500, animationEasingUpdate: 'quinticInOut',
+            tooltip: { formatter: '{b} <br/><em>Click to drill down</em>' }, 
+            animationDurationUpdate: 800, animationEasingUpdate: 'quinticInOut',
             series: [{
-                type: 'graph', layout: 'force', force: { repulsion: 200, edgeLength: 50 }, roam: true,
+                type: 'graph', layout: 'force', 
+                force: { repulsion: 300, edgeLength: 80, gravity: 0.1 }, 
+                roam: true,
                 label: { show: true, position: 'right', color: '#fff' },
-                data: [
-                    { name: targetWl || 'target', itemStyle: { color: CONFIG.colors.green }, symbolSize: 30 },
-                    { name: 'db-primary', itemStyle: { color: CONFIG.colors.bluePrimary }, symbolSize: 20 },
-                    { name: 'cache-redis', itemStyle: { color: CONFIG.colors.bluePrimary }, symbolSize: 20 },
-                    { name: 'auth-service', itemStyle: { color: CONFIG.colors.orange }, symbolSize: 20 }
-                ],
-                links: [
-                    { source: targetWl || 'target', target: 'db-primary' },
-                    { source: targetWl || 'target', target: 'cache-redis' },
-                    { source: 'auth-service', target: targetWl || 'target' }
-                ]
+                data: this.graphData,
+                links: this.graphLinks
             }]
         };
         this.instances.blastChart.setOption(option);
+
+        // Remove old listeners to prevent duplicate triggers
+        this.instances.blastChart.off('click');
+        
+        // Drill-down interactivity
+        this.instances.blastChart.on('click', (params) => {
+            if (params.dataType === 'node') {
+                const clickedId = params.data.id;
+                
+                // Add 1-2 random dependent nodes to simulate drill-down inspection
+                const numNew = Math.floor(Math.random() * 2) + 1;
+                for(let i = 0; i < numNew; i++) {
+                    const newId = Math.random().toString(36).substring(2, 6);
+                    const isDb = Math.random() > 0.5;
+                    this.graphData.push({
+                        id: newId, 
+                        name: (isDb ? 'db-shard-' : 'microsvc-') + newId, 
+                        itemStyle: { color: CONFIG.colors.blueSecondary }, 
+                        symbolSize: 15
+                    });
+                    
+                    // Randomize direction of dependency
+                    if (Math.random() > 0.5) {
+                        this.graphLinks.push({ source: clickedId, target: newId });
+                    } else {
+                        this.graphLinks.push({ source: newId, target: clickedId });
+                    }
+                }
+                
+                this.instances.blastChart.setOption({
+                    series: [{ data: this.graphData, links: this.graphLinks }]
+                });
+            }
+        });
     }
 };
 

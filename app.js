@@ -337,6 +337,32 @@ const UIManager = {
         a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
+    },
+
+    async shareInsights() {
+        if (!State.data) return;
+        
+        const subject = `FinOps Alert: Optimization for ${State.data.workload}`;
+        const esgVal = document.getElementById('co2-val')?.innerText || '0';
+        const body = `FinOps Optimization Opportunity
+Workload: ${State.data.workload} (${State.data.namespace})
+Target Savings: $${State.data.savingsAbs}/mo
+Environmental Impact: ${esgVal} lbs CO2 saved
+Action: Reduce CPU limit from ${State.data.oldLimit} to ${State.data.newLimit}
+
+Risk is mitigated. Historic peak usage remains below the new proposed limit.`;
+
+        if (navigator.share) {
+            try {
+                await navigator.share({ title: subject, text: body });
+            } catch (err) {
+                console.log("Share cancelled or failed", err);
+            }
+        } else {
+            navigator.clipboard.writeText(body);
+            window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            alert("Insights copied to clipboard for Slack, and opened in your email client!");
+        }
     }
 };
 
@@ -354,6 +380,7 @@ const AppController = {
         getEl('btn-reset')?.addEventListener('click', this.resetUI.bind(this));
         getEl('cpu-slider')?.addEventListener('input', this.handleSliderChange.bind(this));
         getEl('btn-gitops')?.addEventListener('click', () => UIManager.downloadPatch());
+        getEl('btn-share')?.addEventListener('click', () => UIManager.shareInsights());
 
         document.querySelectorAll('.query-btn').forEach(btn => {
             btn.addEventListener('click', (e) => this.handleQueryClick(e.target.dataset.query, e.target.innerText));
